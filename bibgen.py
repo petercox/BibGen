@@ -2,22 +2,22 @@
 
 """bibgen.py: Script to automatically generate .bib files.
 
-usage: bibgen.py <texfile> (append)
+usage: bibgen.py <texfile> (--append)
 
 Parses a tex file for \cite commands and dowloads citation information from Inspire using the API.
-Works with arXiv reference, inspire texkey or DOI.
+Works with arXiv identifier, Inspire TeXkey or DOI.
 
-The 'append' option appends new references to an existing bib file. 
+The --append option appends new references to an existing bib file. 
 
 References not available on Inspire can be included in the output bib file by placing them in the file noinspire.bib.
 """
 
 __author__ = "Peter Cox"
-__version__ = "2.0"
-__date__  = "18-09-2020"
+__version__ = "2.1"
+__date__  = "20-09-2020"
 
 
-import os.path, sys, urllib.request
+import os.path, re, sys, urllib.request
 
 
 def RefsFromBib(bibfile):
@@ -40,7 +40,7 @@ def RefsFromTex(texfile):
 		for line in f:
 			if line.startswith('%'):
 				continue
-					for cite in line.split('\cite{')[1:]:
+			for cite in line.split('\cite{')[1:]:
 				refs = cite.split('}', 1)[0].split(',')
 
 				for ref in refs:
@@ -68,16 +68,25 @@ def RemoveDuplicateRefs(refs):
 def GetInspireBibtex(ref):
 	"""Get bibtex information using Inspire API.
 	
-	Works with arXiv reference, Inspire texkey, or DOI.
+	Works with arXiv identifier, Inspire TeXkey, or DOI.
 	"""
 
-	if ref.startswith('10.'):
-		identifier = 'doi'
-	elif ref.find(':') != -1:
-		identifier = 'texkey'
-	else:
-		identifier = 'arxiv'
+	# Determine citation type
+	arxiv = re.compile(r'^\d{4}.\d{4,5}$')
+	arxiv_old = re.compile(r'^[a-z.\-]+/[09]\d{6}$', re.IGNORECASE)
+	inspire = re.compile(r'^[a-zA-Z\-]+:\d{4}[a-z]{2,3}$')
+	doi = re.compile(r'^10.[0-9.]{4,}/\w+')
 
+	if arxiv.match(ref) is not None or arxiv_old.match(ref) is not None:
+		identifier = 'arxiv'
+	elif inspire.match(ref) is not None:
+		identifier = 'texkey'
+	elif doi.match(ref) is not None:
+		identifier = 'doi'
+	else:
+		return None
+
+	# Retrieve bibtex data using Inspire API
 	try:
 		if identifier == 'texkey':
 			bibtex = urllib.request.urlopen('https://inspirehep.net/api/literature?q=texkey:{}&format=bibtex'.format(ref)).read()
@@ -99,13 +108,13 @@ if __name__ == '__main__':
 
 	# Parse command line
 	if len(sys.argv) < 2:
-		print('usage: bibgen.py <texfile> (append)')
+		print('usage: bibgen.py <texfile> (--append)')
 		sys.exit(-1)
 
 	texfile = sys.argv[1]
 	append = False
 	try:
-		if sys.argv[2] == 'append':
+		if sys.argv[2] == '-a' or sys.argv[2] == '--append':
 			append = True
 	except IndexError:
 		pass
