@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+##################################################
 """bibgen.py: Script to automatically generate .bib files.
 
 usage: bibgen.py <texfile> (--append)
@@ -12,13 +13,15 @@ In addition to writing the bib file, the tex file is updated to ensure the same 
 The --append option appends new references to an existing bib file. 
 
 References not available on Inspire can be included in the output bib file by placing them in the file noinspire.bib.
+
+Copyright 2020 Peter Cox
 """
 
 __author__ = "Peter Cox"
+__email__ = "peter.cox@unimelb.edu.au"
 __version__ = "2.2"
-__date__  = "20-09-2020"
 
-########################################
+##################################################
 
 import os.path, re, sys, urllib.request
 
@@ -29,7 +32,7 @@ arxiv_oldRE = re.compile(r'^[a-z.\-]+/[09]\d{6}$', re.IGNORECASE)
 inspireRE = re.compile(r'^[a-zA-Z\-]+:\d{4}[a-z]{2,3}$')
 doiRE = re.compile(r'^10.[0-9.]{4,}/\w+')
 
-########################################
+##################################################
 
 def ChangeBibKey(bibtex, newkey):
     """Replace the bibtex key with newkey."""
@@ -39,7 +42,7 @@ def ChangeBibKey(bibtex, newkey):
     ref_details = bibdata[1].split(',',1)[1]        
     return '%s{%s,%s'%(ref_type, newkey, ref_details)
 
-########################################
+##################################################
 
 def ReadBibtex(bibfile):
     """Read bibtex data from file and store as dictionary of references."""
@@ -61,7 +64,7 @@ def ReadBibtex(bibfile):
 
     return refs
 
-########################################
+##################################################
 
 def RefsFromBib(bibfile):
     """Read references from bib file."""
@@ -74,7 +77,7 @@ def RefsFromBib(bibfile):
 
     return bibRefs
 
-########################################
+##################################################
 
 def RefsFromTex(texfile):
     """Read references from tex file."""
@@ -97,7 +100,7 @@ def RefsFromTex(texfile):
 
     return texRefs
 
-########################################
+##################################################
 
 def GetIdentifiers(bibtex):
     """Retrieve TeXkey, eprint and DOI from bibtex."""
@@ -130,7 +133,7 @@ def GetIdentifiers(bibtex):
 
     return IDs
 
-########################################
+##################################################
 
 def GetInspireBibtex(ref):
     """Get bibtex information using Inspire API.
@@ -165,7 +168,7 @@ def GetInspireBibtex(ref):
         
     return bibtex
 
-########################################
+##################################################
 
 def UpdateTeXCite(texfile, replacements):
     """Replace duplicate cite commands with common identifier according to dictionary of replacements."""
@@ -195,7 +198,7 @@ def UpdateTeXCite(texfile, replacements):
             f.write(line)
         pass
 
-########################################
+##################################################
 
 if __name__ == '__main__':
 
@@ -313,3 +316,5 @@ if __name__ == '__main__':
             sys.exit()  
 
         UpdateTeXCite(texfile, texRepl)
+
+##################################################

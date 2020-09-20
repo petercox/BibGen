@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 
-"""inspire2arxiv.py: Converts all \cite commands in a tex file to arXiv identifier (where possible).
+##################################################
+"""cite2arxiv.py: Converts all \cite commands in a tex file to arXiv identifier (where possible).
 
-usage: inspire2arxiv.py <texfile> <bibfile>
+usage: cite2arxiv.py <texfile> <bibfile>
+
+Copyright 2020 Peter Cox
 """
-
-__author__ = "Peter Cox"
-__version__ = '1.2'
-__date__ = '20-09-2020'
-
+##################################################
 
 import os.path, re, sys
 from bibgen import UpdateTeXCite
@@ -66,3 +65,5 @@ while ans != 'y' and ans != 'n':
         sys.exit()  
 
 UpdateTeXCite(texfile, replacements)
+
+##################################################
