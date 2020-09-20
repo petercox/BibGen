@@ -1,81 +1,68 @@
 #!/usr/bin/python3
 
-"""inspire2arxiv.py: Converts all references in a tex file from Inspire texkey to arXiv reference (where possible) to avoid duplicate entries in the bibliography.
+"""inspire2arxiv.py: Converts all \cite commands in a tex file to arXiv identifier (where possible).
 
-usage: inspire2arxiv.py <bibfile>
+usage: inspire2arxiv.py <texfile> <bibfile>
 """
 
 __author__ = "Peter Cox"
-__version__ = '1.1'
-__date__ = '19-09-2020'
+__version__ = '1.2'
+__date__ = '20-09-2020'
 
 
-import os.path, sys
+import os.path, re, sys
+from bibgen import UpdateTeXCite
 
-if len(sys.argv) < 2:
-    print 'usage: convert_refs.py <bibfile>'
+if len(sys.argv) < 3:
+    print('usage: inspire2arxiv.py <texfile> <bibfile>')
     sys.exit(-1)
 
-bibfile = sys.argv[1]
+texfile = sys.argv[1]
+bibfile = sys.argv[2]
 
-# Check for valid bibfile
+# Check for valid files
+if not texfile.endswith('tex') or not os.path.exists(texfile):
+    print("'%s' is not a valid tex file."%texfile)
+    sys.exit(1)
 if not bibfile.endswith('bib') or not os.path.exists(bibfile):
-    print("'%s' is not a valid bibfile.")%bibfile
+    print("'%s' is not a valid bib file."%bibfile)
     sys.exit(1)
 
-id_dict = {}
-inspire_id = None
 
-# Read bibfile
+arxivRE = re.compile(r'^\d{4}.\d{4,5}$')
+arxiv_oldRE = re.compile(r'^[a-z.\-]+/[09]\d{6}$', re.IGNORECASE)
+
+replacements = {}
+refID = None
+
+# Read bibfile to get dictionary of replacements
 with open(bibfile) as f:
     for line in f:
         line = line.strip()
         
-        # Get inspire texkey
+        # Get reference key
         if line.startswith('@'):
-            inspire_id = line.split('{')[1].split(',')[0]
+            refID = line.split('{')[1].split(',')[0]
 
         # Get arXiv reference
-        if line.startswith('eprint'):
-            arxiv_id = line.split('"')[1]
-            if len(arxiv_id) > 20:
-                continue
-            if inspire_id is not None and inspire_id != arxiv_id:
-                id_dict[inspire_id] = arxiv_id
-                inspire_id = None
+        elif line.startswith('eprint'):
+            arxivID = line.split('"')[1]
+            if refID is not None and refID != arxivID:
+                if arxivRE.match(arxivID) is not None or arxiv_oldRE.match(arxivID) is not None:
+                    replacements[refID] = arxivID
+                    refID = None
 
-print(id_dict)
+print(replacements)
 
-texfile = sys.argv[1].split('.bib')[0] + '.tex'
+if len(replacements) == 0:
+    sys.exit()
 
 # Check whether to overwrite
-ans = raw_input('Warning this will overwrite existing tex file. Do you want to continue? (y/n): ')
+ans = input('Warning this will overwrite existing tex file. Do you want to continue? (y/n): ')
 while ans != 'y' and ans != 'n':
-    ans = raw_input("Please answer y or n: ")
+    ans = input("Please answer y or n: ")
         
     if ans == 'n':
         sys.exit()  
 
-# Read texfile and update tex
-newtex = []
-with open(texfile) as f:
-    for line in f:
-        refs = []
-
-        # Get references in line
-        for cite in line.split('\cite{')[1:]:
-            refs += cite.split('}', 1)[0].split(',')
-
-        # Replace inspire texkey with arXiv reference
-        for ref in refs:
-            try:
-                line = line.replace(ref,id_dict[ref])
-            except KeyError:
-                pass
-        
-        newtex.append(line)
-
-# Update texfile
-with open(texfile, 'w') as f:
-    for line in newtex:
-        f.write(line)
+UpdateTeXCite(texfile, replacements)
