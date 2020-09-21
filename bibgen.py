@@ -3,23 +3,23 @@
 ##################################################
 """bibgen.py: Script to automatically generate .bib files.
 
-usage: bibgen.py <texfile> (--append)
+usage: bibgen.py <TeXfile> (--overwrite)
 
 Parses a tex file for \cite commands and dowloads citation information from Inspire using the API.
-Works with arXiv identifier, Inspire TeXkey or DOI.
+Works with arXiv preprint number, Inspire TeXkey or DOI.
 
-In addition to writing the bib file, the tex file is updated to ensure the same identifier is used in each \cite command to avoid duplicate bibliography entries.
+The tex file is also updated to ensure the same identifier is used in each \cite command and avoid duplicate bibliography entries.
 
-The --append option appends new references to an existing bib file. 
+The default behaviour is to append new references to an existing bib file. This can be changed using the --overwrite option.
 
-References not available on Inspire can be included in the output bib file by placing them in the file noinspire.bib.
+References not available on Inspire can be included in the output by placing them in the file noinspire.bib.
 
 Copyright 2020 Peter Cox
 """
 
 __author__ = "Peter Cox"
 __email__ = "peter.cox@unimelb.edu.au"
-__version__ = "2.2"
+__version__ = "2.3"
 
 ##################################################
 
@@ -204,14 +204,14 @@ if __name__ == '__main__':
 
     # Parse command line
     if len(sys.argv) < 2:
-        print('usage: bibgen.py <texfile> (--append)')
+        print('usage: bibgen.py <TeXfile> (--overwrite)')
         sys.exit(-1)
 
     texfile = sys.argv[1]
-    append = False
+    append = True
     try:
-        if sys.argv[2] == '-a' or sys.argv[2] == '--append':
-            append = True
+        if sys.argv[2] == '--overwrite':
+            append = False
     except IndexError:
         pass
 
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     texRepl = {}
     for ref in texRefs:
         
-        # Don't download data if it already exists in bib file to be appended
+        # Don't download data if it already exists in bib file
         if append and ref in bibRefs:
             continue
 
