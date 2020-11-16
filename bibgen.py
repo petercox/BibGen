@@ -288,7 +288,7 @@ if __name__ == '__main__':
         # If reference can't be found on Inspire check noinspire.bib references
         else:
             try:
-                writeRefs[ref] = noinspireRefs[ref]
+                writeRefs.append(noinspireRefs[ref])
             except KeyError:
                 print('Could not find reference for {}. Skipping.'.format(ref))
             else:
