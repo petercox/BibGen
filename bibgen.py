@@ -231,7 +231,10 @@ if __name__ == '__main__':
 
     # Read citations from existing bib file if updating
     if append:
-        bibRefs = RefsFromBib(bibfile)
+        if os.path.exists(bibfile):
+            bibRefs = RefsFromBib(bibfile)
+        else:
+            append = False
 
     # Read citations from tex file
     texRefs = RefsFromTex(texfile)
