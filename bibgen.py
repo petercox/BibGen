@@ -243,6 +243,8 @@ if __name__ == '__main__':
     # Check for noinspire bib file and read bibtex
     if os.path.exists('noinspire.bib'):
         noinspireRefs = ReadBibtex('noinspire.bib')
+    else:
+        noinspireRefs = {}
 
     # Download citation data from Inspire 
     writeRefs = []
