@@ -3,7 +3,7 @@
 ##################################################
 """bibgen.py: Script to automatically generate .bib files.
 
-usage: bibgen.py <TeXfile> (--overwrite)
+usage: bibgen.py <TeXfile> (options)
 
 Parses a tex file for \cite commands and dowloads citation information from Inspire using the API.
 Works with arXiv preprint number, Inspire TeXkey or DOI.
@@ -23,7 +23,7 @@ __version__ = "2.3"
 
 ##################################################
 
-import os.path, re, sys, urllib.request
+import argparse, os.path, re, sys, urllib.request
 
 
 # Citation identifier types
@@ -200,28 +200,31 @@ def UpdateTeXCite(texfile, replacements):
 
 ##################################################
 
-if __name__ == '__main__':
+def main():
+    """Automatically generate bib file from tex file using Inspire API."""
 
-    # Parse command line
-    if len(sys.argv) < 2:
-        print('usage: bibgen.py <TeXfile> (--overwrite)')
-        sys.exit(-1)
+    # Parse options
+    parser = argparse.ArgumentParser(description='Automatically generate bib file from tex file using Inspire API.')
+    parser.add_argument('texfile')
 
-    texfile = sys.argv[1]
-    append = True
-    try:
-        if sys.argv[2] == '--overwrite':
-            append = False
-    except IndexError:
-        pass
+    parser.add_argument('--bibfile', dest='bibfile', default=None, help='Specify name of bib file')
+    parser.add_argument('--overwrite', dest='overwrite', action='store_true', default=False, help='Overwrite bib file')
+
+    args = parser.parse_args()
+
+    texfile = args.texfile
 
     base = texfile.rsplit('tex', 1)
     if len(base) == 1:
         print('Error: {} is not a valid .tex file.'.format(texfile))
         sys.exit(1)
-    bibfile = base[0] + 'bib' 
+    
+    if args.bibfile is not None:
+        bibfile = args.bibfile
+    else:
+        bibfile = base[0] + 'bib' 
 
-    if append == False and os.path.exists(bibfile):
+    if args.overwrite == True and os.path.exists(bibfile):
         ans = input('Warning this will overwrite existing bib file. Do you want to continue? (y/n): ')
         while ans != 'y' and ans != 'n':
             ans = input("Please answer y or n: ")
@@ -230,11 +233,11 @@ if __name__ == '__main__':
             sys.exit()
 
     # Read citations from existing bib file if updating
-    if append:
+    if not args.overwrite:
         if os.path.exists(bibfile):
             bibRefs = RefsFromBib(bibfile)
         else:
-            append = False
+            args.overwrite = True
 
     # Read citations from tex file
     texRefs = RefsFromTex(texfile)
@@ -252,7 +255,7 @@ if __name__ == '__main__':
     for ref in texRefs:
         
         # Don't download data if it already exists in bib file
-        if append and ref in bibRefs:
+        if (not args.overwrite) and ref in bibRefs:
             continue
 
         bibtex = GetInspireBibtex(ref)
@@ -279,7 +282,7 @@ if __name__ == '__main__':
             else:
                 writekey = ids['doi']
 
-            if not (append and writekey in bibRefs):
+            if not writekey in bibRefs:
                 writeRefs.append(ChangeBibKey(bibtex, writekey))
 
             # Remove duplicate references from texRefs
@@ -301,10 +304,10 @@ if __name__ == '__main__':
             continue
 
     # Write bib file
-    if append:
-        mode = 'a'
-    else:
+    if args.overwrite:
         mode = 'w'
+    else:
+        mode = 'a'
 
     with open(bibfile, mode) as f:
         for bibtex in writeRefs:
@@ -321,5 +324,10 @@ if __name__ == '__main__':
             sys.exit()  
 
         UpdateTeXCite(texfile, texRepl)
+
+##################################################
+
+if __name__ == '__main__':
+    main()
 
 ##################################################
