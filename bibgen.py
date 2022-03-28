@@ -233,6 +233,7 @@ def main():
             sys.exit()
 
     # Read citations from existing bib file if updating
+    bibRefs = {}
     if not args.overwrite:
         if os.path.exists(bibfile):
             bibRefs = RefsFromBib(bibfile)
