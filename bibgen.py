@@ -207,6 +207,10 @@ def main():
     parser = argparse.ArgumentParser(description='Automatically generate bib file from tex file using Inspire API.')
     parser.add_argument('texfile')
 
+    parser.add_argument('-A', dest='arxiv', action='store_true', default=False, help='Replace all identifiers with arXiv ID')
+    parser.add_argument('-D', dest='doi', action='store_true', default=False, help='Replace all identifiers with DOI')
+    parser.add_argument('-I', dest='inspire', action='store_true', default=False, help='Replace all identifiers with Inspire ID')
+
     parser.add_argument('--bibfile', dest='bibfile', default=None, help='Specify name of bib file')
     parser.add_argument('--overwrite', dest='overwrite', action='store_true', default=False, help='Overwrite bib file')
 
@@ -224,6 +228,10 @@ def main():
     else:
         bibfile = base[0] + 'bib' 
 
+    if args.arxiv or args.doi or args.inspire:
+        args.overwrite = True
+
+    # Issue warning before overwriting bib file
     if args.overwrite == True and os.path.exists(bibfile):
         ans = input('Warning this will overwrite existing bib file. Do you want to continue? (y/n): ')
         while ans != 'y' and ans != 'n':
@@ -261,28 +269,49 @@ def main():
 
         bibtex = GetInspireBibtex(ref)
 
-        # Ensure only a single identifier is used
-        # Preference is arXiv > Inspire > DOI
+        # Select identifier to use
         if bibtex is not None:
             ids = GetIdentifiers(bibtex)
 
-            if ids['arxiv'] in texRefs:
-                writekey = ids['arxiv']
-
-                if ids['inspire'] in texRefs:
-                    texRepl[ids['inspire']] = ids['arxiv']
-                if ids['doi'] in texRefs:
-                    texRepl[ids['doi']] = ids['arxiv']
-
-            elif ids['inspire'] in texRefs:
+            # Use inspire IDs
+            if args.inspire:
                 writekey = ids['inspire']
+                texRepl[ids['arxiv']] = ids['inspire']
+                texRepl[ids['doi']] = ids['inspire']
 
-                if ids['doi'] in texRefs:
-                    texRepl[ids['doi']] = ids['inspire']
+            # Use arXiv IDs
+            elif args.arxiv:
+                writekey = ids['arxiv']
+                texRepl[ids['inspire']] = ids['arxiv']
+                texRepl[ids['doi']] = ids['arxiv']
 
-            else:
+            # Use DOIs
+            elif args.doi:
                 writekey = ids['doi']
+                texRepl[ids['inspire']] = ids['doi']
+                texRepl[ids['arxiv']] = ids['doi']
 
+            # Use existing identifier
+            # If multiple are used preference is Inspire > arXiv > DOI
+            else:
+                if ids['inspire'] in texRefs:
+                    writekey = ids['inspire']
+
+                    if ids['arxiv'] in texRefs:
+                        texRepl[ids['arxiv']] = ids['inspire']
+                    if ids['doi'] in texRefs:
+                        texRepl[ids['doi']] = ids['inspire']
+
+                elif ids['arxiv'] in texRefs:
+                    writekey = ids['arxiv']
+
+                    if ids['doi'] in texRefs:
+                        texRepl[ids['doi']] = ids['arxiv']
+
+                else:
+                    writekey = ids['doi']
+
+            # Add bibtex to output dictionary
             if not writekey in bibRefs:
                 writeRefs.append(ChangeBibKey(bibtex, writekey))
 
@@ -316,8 +345,19 @@ def main():
 
     # Update tex file to remove duplicate refs if required
     if len(texRepl) > 0:
-        print('TeX file contains identical references with different identifiers.')
-        ans = input('Do you want to update the \cite commands in the tex file? (order of preference is arXiv > Inspire > DOI) (y/n): ')
+        if args.inspire or args.arxiv or args.doi:
+            if args.inspire:
+                ID_type = 'Inspire IDs'
+            elif args.arxiv:
+                ID_type = 'arXiv IDs'
+            else:
+                ID_type = 'DOIs'
+            print("You have selected to replace all identifiers with {}".format(ID_type))
+            ans = input('Are you sure you want to update the \cite commands in the tex file? (y/n): ')
+        else:
+            print('TeX file contains identical references with different identifiers.')
+            ans = input('Do you want to update the \cite commands in the tex file? (order of preference is Inspire > arXiv > DOI) (y/n): ')
+        
         while ans != 'y' and ans != 'n':
             ans = input("Please answer y or n: ")
         
