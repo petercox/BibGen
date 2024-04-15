@@ -5,69 +5,99 @@
 
 usage: bibgen.py <TeXfile> (options)
 
-Parses a tex file for \cite commands and dowloads citation information from Inspire using the API.
-Works with arXiv preprint number, Inspire TeXkey or DOI.
+Parses a tex file and dowloads citation information from Inspire using 
+the API. Works with \cite commands containing arXiv preprint number, 
+Inspire ID or DOI.
 
-The tex file is also updated to ensure the same identifier is used in each \cite command and avoid duplicate bibliography entries.
+The tex file is (optionally) updated to ensure the same identifier is 
+used in each \cite command and avoid duplicate bibliography entries.
 
-The default behaviour is to append new references to an existing bib file. This can be changed using the --overwrite option.
+The default behaviour is to append new references to an existing bib file. 
+This can be changed using the --overwrite option.
 
-References not available on Inspire can be included in the output by placing them in the file noinspire.bib.
+References not available on Inspire can be included in the output by 
+placing them in the file noinspire.bib.
 
 Copyright 2020 Peter Cox
 """
 
 __author__ = "Peter Cox"
 __email__ = "peter.cox@unimelb.edu.au"
-__version__ = "2.3"
+__version__ = "3.0"
 
 ##################################################
 
-import argparse, os.path, re, sys, urllib.request
+import argparse, collections, os.path, sys, urllib.request
 
-
-# Citation identifier types
-arxivRE = re.compile(r'^\d{4}.\d{4,5}$')
-arxiv_oldRE = re.compile(r'^[a-z.\-]+/[09]\d{6}$', re.IGNORECASE)
-inspireRE = re.compile(r'^[a-zA-Z\-]+:\d{4}[a-z]{2,3}$')
-doiRE = re.compile(r'^10.[0-9.]{4,}/\w+')
+import bibentry
 
 ##################################################
 
-def ChangeBibKey(bibtex, newkey):
-    """Replace the bibtex key with newkey."""
+def GetInspireBibTeX(ref):
+    """Download BibTeX information using Inspire API.
+    Works with arXiv identifier, Inspire TeXkey, or DOI.
+    """
 
-    bibdata = bibtex.split('{', 1)
-    ref_type = bibdata[0]
-    ref_details = bibdata[1].split(',',1)[1]        
-    return '%s{%s,%s'%(ref_type, newkey, ref_details)
+    # Determine citation type
+    if bibentry.arxivRE.match(ref) is not None or bibentry.arxiv_oldRE.match(ref) is not None:
+        identifier = 'arxiv'
+    elif bibentry.inspireRE.match(ref) is not None:
+        identifier = 'texkey'
+    elif bibentry.doiRE.match(ref) is not None:
+        identifier = 'doi'
+    else:
+        return None
 
-##################################################
+    # Retrieve bibtex data using Inspire API
+    try:
+        if identifier == 'texkey':
+            bibtex = urllib.request.urlopen('https://inspirehep.net/api/literature?q=texkey:{}&format=bibtex'.format(ref)).read()
+        else:
+            bibtex = urllib.request.urlopen('https://inspirehep.net/api/{}/{}?format=bibtex'.format(identifier,ref)).read()
+    except urllib.error.HTTPError:
+        return None
 
-def ReadBibtex(bibfile):
-    """Read bibtex data from file and store as dictionary of references."""
+    bibtex = bibtex.decode()
+
+    # Check for valid bibtex
+    try:
+        bibtex.split('@',1)[1].rsplit('}\n',2)[0]
+    except IndexError:
+        return None
     
-    refs = {}
-    key = None
+    return bibtex
+
+##################################################
+
+def ReadBibTeX(bibfile):
+    """Read bibtex data from .bib file and store as 
+    dictionary of BibEntry."""
+    
+    refs = collections.OrderedDict()
+    tag = None
 
     with open(bibfile) as f:
         for line in f:
+
             if line.startswith('@'):
-                if key is not None:
-                    refs[key] = data
-                key = line.split('{',1)[1].rsplit(',',1)[0]
-                data = ''
-            if key is not None:
-                data += line
-        if key is not None:
-            refs[key] = data
+                if tag is not None:
+                    refs[tag] = bibentry.BibEntry(bibtex)
+
+                tag = line.split('{',1)[1].rsplit(',',1)[0]
+                bibtex = ''
+
+            if tag is not None:
+                bibtex += line
+
+        if tag is not None:
+            refs[tag] = bibentry.BibEntry(bibtex)
 
     return refs
 
 ##################################################
 
 def RefsFromBib(bibfile):
-    """Read references from bib file."""
+    """Read references IDs from .bib file."""
 
     bibRefs = []
     with open(bibfile) as f:
@@ -79,8 +109,8 @@ def RefsFromBib(bibfile):
 
 ##################################################
 
-def RefsFromTex(texfile):
-    """Read references from tex file."""
+def RefsFromTeX(texfile):
+    """Read reference IDs from .tex file."""
 
     texRefs = []
     with open(texfile) as f:
@@ -102,76 +132,8 @@ def RefsFromTex(texfile):
 
 ##################################################
 
-def GetIdentifiers(bibtex):
-    """Retrieve TeXkey, eprint and DOI from bibtex."""
-
-    inspire_id = None
-    arxiv_id = None
-    doi = None
-    IDs = {'arxiv': None, 'inspire': None, 'doi': None}
-
-    for line in bibtex.splitlines():
-        line = line.strip()
-
-        # Get Inspire TeXkey
-        if line.startswith('@'):
-            inspire_id = line.split('{')[1].split(',')[0]
-            if inspireRE.match(inspire_id) is not None:
-                IDs['inspire'] = inspire_id
-
-        # Get arXiv identifier
-        elif line.startswith('eprint'):
-            arxiv_id = line.split('"')[1]
-            if arxivRE.match(arxiv_id) is not None or arxiv_oldRE.match(arxiv_id) is not None:
-                IDs['arxiv'] = arxiv_id
-
-        # Get DOI
-        elif line.startswith('doi'):
-            doi = line.split('"')[1]
-            if doiRE.match(doi) is not None:
-                IDs['doi'] = doi
-
-    return IDs
-
-##################################################
-
-def GetInspireBibtex(ref):
-    """Get bibtex information using Inspire API.
-    
-    Works with arXiv identifier, Inspire TeXkey, or DOI.
-    """
-
-    # Determine citation type
-    if arxivRE.match(ref) is not None or arxiv_oldRE.match(ref) is not None:
-        identifier = 'arxiv'
-    elif inspireRE.match(ref) is not None:
-        identifier = 'texkey'
-    elif doiRE.match(ref) is not None:
-        identifier = 'doi'
-    else:
-        return None
-
-    # Retrieve bibtex data using Inspire API
-    try:
-        if identifier == 'texkey':
-            bibtex = urllib.request.urlopen('https://inspirehep.net/api/literature?q=texkey:{}&format=bibtex'.format(ref)).read()
-        else:
-            bibtex = urllib.request.urlopen('https://inspirehep.net/api/{}/{}?format=bibtex'.format(identifier,ref)).read()
-    except urllib.error.HTTPError:
-        return None
-
-    bibtex = bibtex.decode()
-    try:
-        bibtex.split('@',1)[1].rsplit('}\n',2)[0]
-    except IndexError:
-        return None
-        
-    return bibtex
-
-##################################################
-
 def UpdateTeXCite(texfile, replacements):
-    """Replace duplicate cite commands with common identifier according to dictionary of replacements."""
+    """Replace \cite IDs according to dictionary of replacements."""
 
     # Read texfile and update tex
     newtex = []
@@ -183,7 +145,7 @@ def UpdateTeXCite(texfile, replacements):
             for cite in line.split('\cite{')[1:]:
                 refs += cite.split('}', 1)[0].split(',')
 
-            # Replace inspire TeXkey with arXiv identifier
+            # Replace old identifier with new identifier
             for ref in refs:
                 try:
                     line = line.replace(ref,replacements[ref])
@@ -210,6 +172,7 @@ def main():
     parser.add_argument('-A', dest='arxiv', action='store_true', default=False, help='Replace all identifiers with arXiv ID')
     parser.add_argument('-D', dest='doi', action='store_true', default=False, help='Replace all identifiers with DOI')
     parser.add_argument('-I', dest='inspire', action='store_true', default=False, help='Replace all identifiers with Inspire ID')
+    parser.add_argument('-v', dest='verbose', action='store_true', default=False, help='Verbose')
 
     parser.add_argument('--bibfile', dest='bibfile', default=None, help='Specify name of bib file')
     parser.add_argument('--overwrite', dest='overwrite', action='store_true', default=False, help='Overwrite bib file')
@@ -228,10 +191,7 @@ def main():
     else:
         bibfile = base[0] + 'bib' 
 
-    if args.arxiv or args.doi or args.inspire:
-        args.overwrite = True
-
-    # Issue warning before overwriting bib file
+    # Issue warning before overwriting .bib file
     if args.overwrite == True and os.path.exists(bibfile):
         ans = input('Warning this will overwrite existing bib file. Do you want to continue? (y/n): ')
         while ans != 'y' and ans != 'n':
@@ -240,86 +200,116 @@ def main():
         if ans == 'n':
             sys.exit()
 
-    # Read citations from existing bib file if updating
+    # Read bibtex from existing .bib file if updating and store in bibRefs
     bibRefs = {}
     if not args.overwrite:
         if os.path.exists(bibfile):
-            bibRefs = RefsFromBib(bibfile)
+            bibRefs = ReadBibTeX(bibfile)
         else:
             args.overwrite = True
 
-    # Read citations from tex file
-    texRefs = RefsFromTex(texfile)
+    # Read \cite IDs from .tex file and store in texRefs
+    texRefs = RefsFromTeX(texfile)
     print('Found %d references.'%len(texRefs))
 
-    # Check for noinspire bib file and read bibtex
+    # Check for noinspire.bib file and read bibtex
     if os.path.exists('noinspire.bib'):
-        noinspireRefs = ReadBibtex('noinspire.bib')
+        noinspireRefs = ReadBibTeX('noinspire.bib')
     else:
         noinspireRefs = {}
 
-    # Download citation data from Inspire 
-    writeRefs = []
+    # New bibdata stored in writeRefs
+    writeRefs = collections.OrderedDict()
+    
+    # Loop over references cited in .tex file
+    skip = []
     texRepl = {}
-    for ref in texRefs:
-        
-        # Don't download data if it already exists in bib file
-        if (not args.overwrite) and ref in bibRefs:
-            continue
+    for i, ref in enumerate(texRefs):
 
-        bibtex = GetInspireBibtex(ref)
+        # Skip duplicate references with different identifiers
+        if i in skip:
+            continue
+        
+        # Don't download data if it already exists in .bib file
+        if (not args.overwrite) and ref in bibRefs:
+            if args.inspire:
+                if bibentry.inspireRE.match(ref) is not None:
+                    continue
+            elif args.arxiv:
+                if bibentry.arxivRE.match(ref) is not None or bibentry.arxiv_oldRE.match(ref) is not None:
+                    continue
+            elif args.doi:
+                if bibentry.doiRE.match(ref) is not None:
+                    continue
+            else:
+                continue
+
+        if args.verbose:
+            print("Downloading data for '{}'".format(ref))
+
+        # Download bibtex from Inspire
+        bibtex = GetInspireBibTeX(ref)
 
         # Select identifier to use
         if bibtex is not None:
-            ids = GetIdentifiers(bibtex)
 
-            # Use inspire IDs
+            bib = bibentry.BibEntry(bibtex)
+            ids = bib.IDs
+
+            # Use inspire ID
             if args.inspire:
-                writekey = ids['inspire']
-                texRepl[ids['arxiv']] = ids['inspire']
-                texRepl[ids['doi']] = ids['inspire']
+                tag = ids['inspire']
 
-            # Use arXiv IDs
-            elif args.arxiv:
-                writekey = ids['arxiv']
-                texRepl[ids['inspire']] = ids['arxiv']
-                texRepl[ids['doi']] = ids['arxiv']
+            # Use arXiv ID
+            elif args.arxiv and ids['arxiv'] is not None:
+                tag = ids['arxiv']
 
-            # Use DOIs
-            elif args.doi:
-                writekey = ids['doi']
-                texRepl[ids['inspire']] = ids['doi']
-                texRepl[ids['arxiv']] = ids['doi']
+            # Use DOI
+            elif args.doi and ids['doi'] is not None:
+                tag = ids['doi']
 
             # Use existing identifier
             # If multiple are used preference is Inspire > arXiv > DOI
             else:
                 if ids['inspire'] in texRefs:
-                    writekey = ids['inspire']
-
-                    if ids['arxiv'] in texRefs:
-                        texRepl[ids['arxiv']] = ids['inspire']
-                    if ids['doi'] in texRefs:
-                        texRepl[ids['doi']] = ids['inspire']
+                    tag = ids['inspire']
 
                 elif ids['arxiv'] in texRefs:
-                    writekey = ids['arxiv']
-
-                    if ids['doi'] in texRefs:
-                        texRepl[ids['doi']] = ids['arxiv']
+                    tag = ids['arxiv']
 
                 else:
-                    writekey = ids['doi']
+                    tag = ids['doi']
+
+            # Update dictionary of replacements for .tex file
+            # to avoid duplicate bibliography entries
+            if tag == ids['inspire']:
+                if ids['arxiv'] in texRefs:
+                    texRepl[ids['arxiv']] = ids['inspire']
+                if ids['doi'] in texRefs:
+                    texRepl[ids['doi']] = ids['inspire']
+
+            elif tag == ids['arxiv']:
+                if ids['inspire'] in texRefs:
+                    texRepl[ids['inspire']] = ids['arxiv']
+                if ids['doi'] in texRefs:
+                    texRepl[ids['doi']] = ids['arxiv']
+
+            elif tag == ids['doi']:
+                if ids['arxiv'] in texRefs:
+                    texRepl[ids['arxiv']] = ids['doi']
+                if ids['inspire'] in texRefs:
+                    texRepl[ids['inspire']] = ids['doi']
 
             # Add bibtex to output dictionary
-            if not writekey in bibRefs:
-                writeRefs.append(ChangeBibKey(bibtex, writekey))
+            if not tag in bibRefs and not tag in writeRefs:
+                bib.tag = tag
+                writeRefs[tag] = bib
 
-            # Remove duplicate references from texRefs
-            for i in ids.values():
-                if i != ref:
+            # Skip duplicate references with different identifiers
+            for id in ids.values():
+                if id is not None and id != ref:
                     try:
-                        texRefs.remove(i)
+                        skip.append(texRefs.index(id))
                     except:
                         ValueError
 
@@ -340,10 +330,10 @@ def main():
         mode = 'a'
 
     with open(bibfile, mode) as f:
-        for bibtex in writeRefs:
-            f.write(bibtex+'\n')
+        for bib in writeRefs.values():
+            f.write(bib.BibTeXString() + '\n')
 
-    # Update tex file to remove duplicate refs if required
+    # Update tex file to change identifiers or remove duplicates, if required
     if len(texRepl) > 0:
         if args.inspire or args.arxiv or args.doi:
             if args.inspire:
