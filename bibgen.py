@@ -210,7 +210,7 @@ def main():
 
     # Read \cite IDs from .tex file and store in texRefs
     texRefs = RefsFromTeX(texfile)
-    print('Found %d references.'%len(texRefs))
+    print('{} contains {} references.'.format(texfile, len(texRefs)))
 
     # Check for noinspire.bib file and read bibtex
     if os.path.exists('noinspire.bib'):
@@ -224,6 +224,7 @@ def main():
     # Loop over references cited in .tex file
     skip = []
     texRepl = {}
+    first = True
     for i, ref in enumerate(texRefs):
 
         # Skip duplicate references with different identifiers
@@ -244,8 +245,11 @@ def main():
             else:
                 continue
 
+        if first:
+            print('Downloading data from Inspire...')
+            first = False
         if args.verbose:
-            print("Downloading data for '{}'".format(ref))
+            print('\t{}'.format(ref))
 
         # Download bibtex from Inspire
         bibtex = GetInspireBibTeX(ref)
@@ -316,22 +320,26 @@ def main():
         # If reference can't be found on Inspire check noinspire.bib references
         else:
             try:
-                writeRefs.append(noinspireRefs[ref])
+                writeRefs[ref] = noinspireRefs[ref]
             except KeyError:
-                print('Could not find reference for {}. Skipping.'.format(ref))
+                print("Could not find data for '{}'. Skipping.".format(ref))
             else:
-                print('Could not find inspire reference for {}. Using noinspire.bib entry.'.format(ref))
+                print("Reference '{}' not found on Inspire. Using noinspire.bib entry.".format(ref))
             continue
 
     # Write bib file
-    if args.overwrite:
-        mode = 'w'
-    else:
-        mode = 'a'
+    if len(writeRefs) > 0:
+        print('{} references added to .bib file.'.format(len(writeRefs)))
+        if args.overwrite:
+            mode = 'w'
+        else:
+            mode = 'a'
 
-    with open(bibfile, mode) as f:
-        for bib in writeRefs.values():
-            f.write(bib.BibTeXString() + '\n')
+        with open(bibfile, mode) as f:
+            for bib in writeRefs.values():
+                f.write(bib.BibTeXString() + '\n')
+    else:
+        print('No new references to add.')
 
     # Update tex file to change identifiers or remove duplicates, if required
     if len(texRepl) > 0:
@@ -342,10 +350,10 @@ def main():
                 ID_type = 'arXiv IDs'
             else:
                 ID_type = 'DOIs'
-            print("You have selected to replace all identifiers with {}".format(ID_type))
+            print("\nYou have selected to replace all identifiers with {}.".format(ID_type))
             ans = input('Are you sure you want to update the \cite commands in the tex file? (y/n): ')
         else:
-            print('TeX file contains identical references with different identifiers.')
+            print('\nTeX file contains identical references with different identifiers.')
             ans = input('Do you want to update the \cite commands in the tex file? (order of preference is Inspire > arXiv > DOI) (y/n): ')
         
         while ans != 'y' and ans != 'n':
